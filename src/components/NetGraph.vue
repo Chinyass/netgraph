@@ -20,6 +20,9 @@
     <div>
       <button @click="Save">Save </button>
     </div>
+    <div class='search_vlan'>
+        <input v-model="searching_vlan" /> <button @click="search_path_vlan">find</button>
+    </div>
     <v-network-graph
       v-model:selected-nodes="selectedNodes"
       :layouts="layouts"
@@ -28,6 +31,8 @@
       :configs="configs"
       class="vnet"
     >
+      <div class="context-menu">Menu for the background</div>
+
       <template #edge-label="{ edgeId, edge, scale, ...slotProps }">
         <v-edge-label
           :text="edge.on_port"
@@ -78,6 +83,7 @@ export default defineComponent({
           on_port : '',
           to_port : '',
         },
+        searching_vlan: '',
         selectedNodes : [],
         configs : vNG.defineConfigs({
           node: {
@@ -168,6 +174,23 @@ export default defineComponent({
       },
   },
   methods: {
+      search_path_vlan(){
+          const vlan = this.searching_vlan
+          Object.keys(this.nodes).forEach( node_ip => {
+              const ip = node_ip
+              const connections = Object.keys(this.edges).filter( edge => {
+                if (this.edges[edge].source == node_ip) return true
+              })
+
+              axios.post('http://localhost:8000/search_vlan',{
+                ip,
+                vlan
+              }).then( res => {
+                console.log(res.data)
+              })
+          })
+          
+      },
       setting_map(){
         this.map.on_setting = !this.map.on_setting
         this.configs.node.draggable = !this.configs.node.draggable
@@ -281,6 +304,15 @@ export default defineComponent({
 </script>
 
 <style scoped>
+  .context-menu{
+    width: 180px;
+    background-color: #efefef;
+    padding: 10px;
+    position: absolute;
+    font-size: 12px;
+    border: 1px solid #aaa;
+    box-shadow: 2px 2px 2px #aaa
+  }
   .vnet {
     background: #a6a5a744;
   }
@@ -288,7 +320,7 @@ export default defineComponent({
     position: absolute;
     inset: auto 10px 10px auto;
     padding: 10px;
-    background: #ffff0044;
+    background: #00ff0077;
     border-radius: 4px;
     font-size: 10px;
     line-height: 11px;
