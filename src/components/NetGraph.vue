@@ -1,6 +1,6 @@
 <template>
   <div class="netgraph">
-    <button @click="setting_map">setting</button>
+    <el-button @click="setting_map">setting</el-button>
     <button @click="change_map" >change </button>
     <div id='control_map' v-if="map.on_setting">
       <button v-if="!map.show_add_node" @click=" () => this.map.show_add_node = true ">add node</button>
@@ -23,36 +23,94 @@
     <div class='search_vlan'>
         <input v-model="searching_vlan" /> <button @click="search_path_vlan">find</button>
     </div>
-    <v-network-graph
-      v-model:selected-nodes="selectedNodes"
-      :layouts="layouts"
-      :nodes="nodes"
-      :edges="edges"
-      :configs="configs"
-      class="vnet"
-    >
-      <div class="context-menu">Menu for the background</div>
-
-      <template #edge-label="{ edgeId, edge, scale, ...slotProps }">
-        <v-edge-label
-          :text="edge.on_port"
-          align="source"
-          vertical-align="above"
-          fill="#ff5500"
-          v-bind="slotProps"
-          :font-size="14 * scale"
-        />
-        <v-edge-label
-          :text="edge.to_port"
-          align="target"
-          vertical-align="above"
-          v-bind="slotProps"
-          fill="#ff5500"
-          :font-size="14 * scale"
-        />
-      </template>
-    </v-network-graph>
+    <div class="tooltip-wrapper">
+      <v-network-graph
+        v-model:selected-nodes="selectedNodes"
+        :layouts="layouts"
+        :nodes="nodes"
+        :edges="edges"
+        :configs="configs"
+        :event-handlers="eventHandlers"
+        class="vnet"
+      >
+        <template #edge-label="{ edgeId, edge, scale, ...slotProps }">
+          <v-edge-label
+            :text="edge.on_port_name"
+            align="source"
+            vertical-align="above"
+            fill="#ff5500"
+            v-bind="slotProps"
+            :font-size="14 * scale"
+          />
+          <v-edge-label
+            :text="edge.to_port_name"
+            align="target"
+            vertical-align="above"
+            v-bind="slotProps"
+            fill="#ff5500"
+            :font-size="14 * scale"
+          />
+        </template>
+      </v-network-graph>
+    </div>
     <pre class="layouts">{{ layoutsText }}</pre>
+
+    <div ref="nodeMenu" class="context-menu">
+      <el-menu
+          :default-active="activeIndex2"
+          class="el-menu-demo"
+          mode="vertical"
+          background-color="#545c64"
+          text-color="#fff"
+          active-text-color="#ffd04b"
+      >
+          <el-sub-menu v-for="(data,index) in interfaces" :index="index" :key="index" @select="handleSelect">
+              <template #title>{{data.name}}</template>
+              <el-sub-menu :index="`${index}-1`">
+                      <template #title>Сменить Режим</template>
+                      <el-menu-item v-for="(mode,j) in modes" :key="j" :index="`${index}-1-${j}`" @click="change_mode_port(index,mode,menuTargetNode)">{{mode}}</el-menu-item>
+              </el-sub-menu>
+              <el-sub-menu :index="`${index}-2`">
+                      <template #title>Назначить ACCESS VLAN</template>
+                      <el-menu-item :index="`${index}-2-1`">
+                          <div>
+                              <el-row>
+                                  <el-col :span="14">
+                                      <el-input v-model="operator.access_vlan"
+                                          size="small"
+                                          placeholder="Please Input"
+                                      >
+                                      </el-input>
+                                  </el-col>
+                                  <el-col :span="9">
+                                      <el-button type="primary" size="small" @click="add_access_vlan(index,menuTargetNode)" plain>OK</el-button>
+                                  </el-col>
+                              </el-row>
+                          </div>
+                      </el-menu-item>
+              </el-sub-menu>
+              <el-sub-menu :index="`${index}-3`">
+                      <template #title>Добавить TRUNK VLAN</template>
+                      <el-menu-item :index="`${index}-3-1`">
+                          <div>
+                              <el-row>
+                                  <el-col :span="14">
+                                      <el-input v-model="operator.trunk_vlan"
+                                          size="small"
+                                          placeholder="Please Input"
+                                      >
+                                      </el-input>     
+                                  </el-col>
+                                  <el-col :span="9">
+                                      <el-button type="primary" size="small" @click="add_trunk_vlans(index,menuTargetNode)" plain>OK</el-button>
+                                  </el-col>
+                              </el-row>
+                          </div>
+                      </el-menu-item>
+              </el-sub-menu>
+          </el-sub-menu>
+      </el-menu>
+    </div>
   </div>
 </template>
 
@@ -68,6 +126,12 @@ export default defineComponent({
   },
   data : () => {
     return {
+        menuTargetNode: '',
+        interfaces: [],
+        operator: {
+          access_vlan : '',
+          trunk_vlan : '',
+        },
         map : {
           on_setting : false,
           show_add_node : false,
@@ -88,7 +152,7 @@ export default defineComponent({
         configs : vNG.defineConfigs({
           node: {
             draggable: false,
-            selectable: false,
+            selectable: true,
             label: {
                 visible: true,
                 direction: node => node.directionText
@@ -156,7 +220,8 @@ export default defineComponent({
             node4: { x: 150, y: 50 },
             */
           },
-        }
+        },
+        eventHandlers: {}
     }
   },
   watch: {
@@ -174,6 +239,34 @@ export default defineComponent({
       },
   },
   methods: {
+      add_trunk_vlans(data_port,node){
+        console.log(node)
+        const ip = node.ip
+        const vlan = this.operator.trunk_vlan
+        const port = data_port
+        axios.post('http://172.16.25.43:8000/add_trunk_vlans',{
+          ip,
+          vlan,
+          port
+        }).then( res => {
+          console.log(res.data)
+          this.operator.trunk_vlan = ''
+        })
+      },
+      add_access_vlan(data_port,node){
+          console.log(node)
+          const ip = node.ip
+          const vlan = this.operator.access_vlan
+          const port = data_port
+          axios.post('http://172.16.25.43:8000/add_access_vlan',{
+            ip,
+            vlan,
+            port
+          }).then( res => {
+            console.log(res.data)
+            this.operator.access_vlan = ''
+          })
+      },
       search_path_vlan(){
           const vlan = this.searching_vlan
           Object.keys(this.nodes).forEach( node_ip => {
@@ -182,7 +275,7 @@ export default defineComponent({
                 if (this.edges[edge].source == node_ip) return true
               })
 
-              axios.post('http://localhost:8000/search_vlan',{
+              axios.post('http://172.16.25.43:8000/search_vlan',{
                 ip,
                 vlan
               }).then( res => {
@@ -247,12 +340,29 @@ export default defineComponent({
             temp['position'] = {...this.layouts.nodes[node]}
             data.push(temp)
           })
-          axios.post('http://localhost:8000/save_map',{
+          axios.post('http://172.16.25.43:8000/save_map',{
             data : data,
             node_map : this.map_name
           }).then( res => {
              console.log(res.data)
           })
+      },
+
+      showContextMenu(element, event) {
+        element.style.left = event.x + "px"
+        element.style.top = event.y + "px"
+        element.style.visibility = "visible"
+        const handler = (event) => {
+            if (!event.target || !element.contains(event.target)) {
+                element.style.visibility = "hidden"
+                document.removeEventListener("pointerdown", handler, { capture: true })
+            }
+        }
+        document.addEventListener("pointerdown", handler, { passive: true, capture: true })
+       },
+
+      handleSelect(){
+          console.log('opened')
       },
       change_map(){
         this.$router.push('/test')
@@ -264,7 +374,7 @@ export default defineComponent({
     vnetgraph.style.height = `${wheight - 100}px`
   },
   created() {
-    axios.post('http://localhost:8000/get_nodes',{map_name:this.map_name}).then( res => {
+    axios.post('http://172.16.25.43:8000/get_nodes',{map_name:this.map_name}).then( res => {
       const data = res.data
       const nodes = this.nodes
       const edges = this.edges
@@ -275,14 +385,20 @@ export default defineComponent({
           nodes[node.ip] = {
             name : node.name,
             model : node.model,
-            directionText : node.directionText
+            directionText : node.directionText,
+            ports : node.ports
           }
+          
           if(node.connections.length){
             for(let i = 0 ; i < node.connections.length ; i++){
+              const to_port_name = data.filter( el => el.ip == node.connections[i].to_ip )[0]
+                .ports[node.connections[i].to_port].name
               edges[`edge${i}`] = {
                 source : node.ip,
                 on_port : node.connections[i].on_port,
+                on_port_name : node.ports[node.connections[i].on_port]['name'],
                 target : node.connections[i].to_ip,
+                to_port_name : to_port_name,
                 to_port : node.connections[i].to_port
               }
             }
@@ -297,8 +413,21 @@ export default defineComponent({
       this.nodes = nodes
       this.edges = edges
       this.layouts = layouts
-
     })
+    this.eventHandlers = {
+      "node:contextmenu" : (params) => {
+        const { node, event } = params
+        event.stopPropagation()
+        event.preventDefault()
+        const asd = this.$refs.nodeMenu
+        this.menuTargetNode = this.nodes[node] ?? ""
+        if (this.menuTargetNode){
+          this.menuTargetNode['ip'] = node
+        }
+        this.interfaces = this.nodes[node].ports ?? []
+        this.showContextMenu(asd, event)
+      }
+    }
   }
 });
 </script>
@@ -315,6 +444,7 @@ export default defineComponent({
   }
   .vnet {
     background: #a6a5a744;
+    position: relative;
   }
   .layouts {
     position: absolute;
@@ -325,4 +455,29 @@ export default defineComponent({
     font-size: 10px;
     line-height: 11px;
   }
+  .context-menu {
+        width: 300px;
+        padding: 10px;
+        height: 300px;
+        overflow-y: scroll;
+        position: fixed;
+        visibility: hidden;
+        font-size: 16px;
+        background-color: rgb(16, 16, 16);
+        color: aliceblue;
+        border-radius: 10px;
+        box-shadow: 0 10px 20px rgb(64 64 64 / 5%);
+        z-index: 1;
+    }
+    .nodeMenu-ports{
+        margin-top: 2%;
+        list-style-type: none;
+        
+    }
+    .nodeMenu-ports:hover{
+        margin-left: 2%;
+        border-left: 1px solid gold;
+        font-size: 18px;
+        color: rgb(11, 191, 11)
+    }
 </style>
